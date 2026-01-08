@@ -45,11 +45,12 @@ Columns:
 
 # Next Steps
 - Add incremental daily logging (append new entries)
-- 
+
 ## How to Run
 ```bash
 pip install pandas matplotlib openpyxl
 python analysis.py
+
 
 
 
