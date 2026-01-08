@@ -1,5 +1,5 @@
 # analysis.py
-# Music Listening Project
+# Music Listening Analytics
 
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -7,151 +7,123 @@ import sqlite3
 from pathlib import Path
 
 
-# CONFIG 
-# ---------------------------
+# CONFIG
+
 PROJECT_DIR = Path(__file__).parent
 CSV_PATH = PROJECT_DIR / "music.csv"
 DB_PATH = PROJECT_DIR / "music_log.db"
-EXCEL_OUT = PROJECT_DIR / "workout_summary.xlsx"
-PIE_OUT = PROJECT_DIR / "minutes_by_genre_pie.png"
+OUTPUTS_DIR = PROJECT_DIR / "outputs"
+
+EXCEL_OUT = OUTPUTS_DIR / "workout_summary.xlsx"
+PIE_OUT = OUTPUTS_DIR / "minutes_by_genre_pie.png"
+
+SHOW_CHARTS = True
 
 
-EXPORT_EXCEL = True           
-SHOW_CHARTS = True           
-SAVE_PIE_IMAGE = True         
-APPEND_NEW_SONG = False       
-
-
-#  LOAD CSV
-if not CSV_PATH.exists():
-    raise FileNotFoundError(f"Could not find {CSV_PATH}. Make sure music.csv is in the same folder as analysis.py")
-
-df = pd.read_csv(CSV_PATH)
-
-
-df.columns = df.columns.str.strip().str.lower()
-
-
-for col in ["artist", "track", "genre", "activity", "date"]:
-    if col in df.columns:
-        df[col] = df[col].astype(str).str.strip()
-
-
-if "activity" in df.columns:
-    df["activity"] = df["activity"].str.lower()
-
-print("=== FULL DATA ===")
-print(df)
-
-print("\n=== FIRST LOOK (head) ===")
-print(df.head())
-
-print("\n=== INFO ===")
-print(df.info())
-
-# INSIGHTS
 # ---------------------------
-print("\n=== TOTAL MINUTES ===")
-total_minutes = df["minutes"].sum()
-print(total_minutes)
+# FUNCTIONS
+# ---------------------------
+def load_data(csv_path):
+    if not csv_path.exists():
+        raise FileNotFoundError(f"Could not find {csv_path}")
 
-print("\n=== MINUTES BY ACTIVITY (pandas) ===")
-minutes_by_activity = df.groupby("activity")["minutes"].sum().sort_values(ascending=False)
-print(minutes_by_activity)
+    df = pd.read_csv(csv_path)
 
-# Workout filter + sort
-print("\n=== WORKOUT ROWS ONLY ===")
-workout_df = df[df["activity"] == "workout"]
-print(workout_df)
+    # normalize columns
+    df.columns = df.columns.str.strip().str.lower()
 
-print("\n=== WORKOUT SORTED (DESC) ===")
-workout_sorted = workout_df.sort_values(by="minutes", ascending=False)
-print(workout_sorted)
+    # clean text fields
+    for col in ["artist", "track", "genre", "activity", "date"]:
+        if col in df.columns:
+            df[col] = df[col].astype(str).str.strip()
 
+    if "activity" in df.columns:
+        df["activity"] = df["activity"].str.lower()
 
-# EXPORT TO EXCEL 
-if EXPORT_EXCEL:
-    try:
-        workout_sorted.to_excel(EXCEL_OUT, index=False)
-        print(f"\ Exported workout summary to: {EXCEL_OUT}")
-    except ModuleNotFoundError:
-        print("\n Excel export failed: openpyxl not installed.")
-        print("Run this in PowerShell/CMD:  pip install openpyxl")
+    return df
 
 
-# CHARTS
-# Bar chart: minutes by activity
-if SHOW_CHARTS:
+def summarize(df):
+    print("Data shape:", df.shape)
+    print("\nMissing values:\n", df.isna().sum())
+    print("\nSample rows:\n", df.head())
+
+    minutes_by_activity = (
+        df.groupby("activity")["minutes"]
+        .sum()
+        .sort_values(ascending=False)
+    )
+
+    return minutes_by_activity
+
+
+def export_outputs(df, minutes_by_activity):
+    OUTPUTS_DIR.mkdir(exist_ok=True)
+
+    # workout summary
+    workout_df = df[df["activity"] == "workout"]
+    workout_sorted = workout_df.sort_values("minutes", ascending=False)
+    workout_sorted.to_excel(EXCEL_OUT, index=False)
+
+    # bar chart
     plt.figure()
     minutes_by_activity.plot(kind="bar")
     plt.title("Total Minutes by Activity")
     plt.xlabel("Activity")
     plt.ylabel("Minutes")
     plt.tight_layout()
-    plt.show()
 
-# Pie chart: minutes by genre 
-genre_minutes = df.groupby("genre")["minutes"].sum().sort_values(ascending=False)
+    if SHOW_CHARTS:
+        plt.show()
+    else:
+        plt.close()
 
-#  figure 
-plt.figure(figsize=(6, 6))
-genre_minutes.plot(kind="pie", autopct="%1.1f%%", startangle=90)
-plt.title("Minutes by Genre")
-plt.ylabel("")
-plt.tight_layout()
+    # pie chart by genre
+    genre_minutes = (
+        df.groupby("genre")["minutes"]
+        .sum()
+        .sort_values(ascending=False)
+    )
 
-if SAVE_PIE_IMAGE:
+    plt.figure(figsize=(6, 6))
+    genre_minutes.plot(kind="pie", autopct="%1.1f%%", startangle=90)
+    plt.title("Minutes by Genre")
+    plt.ylabel("")
+    plt.tight_layout()
     plt.savefig(PIE_OUT)
-    print(f"\n✅ Saved pie chart image to: {PIE_OUT}")
 
-if SHOW_CHARTS:
-    
-    plt.show()
-else:
-    plt.close()
+    if SHOW_CHARTS:
+        plt.show()
+    else:
+        plt.close()
 
 
- # SQLITE (SQL) SAVE + QUERY
+def save_to_sqlite(df, db_path):
+    conn = sqlite3.connect(db_path)
+    df.to_sql("music", conn, if_exists="replace", index=False)
 
-print("\n=== SQL: SAVING TO SQLITE ===")
-conn = sqlite3.connect(DB_PATH)
+    query = """
+    SELECT activity, SUM(minutes) AS total_minutes
+    FROM music
+    GROUP BY activity
+    ORDER BY total_minutes DESC;
+    """
 
-df.to_sql("music", conn, if_exists="replace", index=False)
+    result = pd.read_sql(query, conn)
+    print("\nSQL Results:\n", result)
 
-sql_query = """
-SELECT activity, SUM(minutes) AS total_minutes
-FROM music
-GROUP BY activity
-ORDER BY total_minutes DESC;
-"""
-
-result = pd.read_sql(sql_query, conn)
-print("\n=== SQL RESULTS: TOTAL MINUTES BY ACTIVITY ===")
-print(result)
+    conn.close()
 
 
+def main():
+    df = load_data(CSV_PATH)
+    minutes_by_activity = summarize(df)
+    export_outputs(df, minutes_by_activity)
+    save_to_sqlite(df, DB_PATH)
+    print("\nAnalysis complete. Outputs saved to /outputs")
 
-if APPEND_NEW_SONG:
-    new_song = {
-        "date": "12/11/2024",
-        "artist": "Frank Ocean",
-        "track": "Nights",
-        "genre": "R&B",
-        "minutes": 4,
-        "activity": "Relaxing",
-    }
 
-    
-    df_updated = pd.concat([df, pd.DataFrame([new_song])], ignore_index=True)
 
-  
-    df_updated.to_csv(CSV_PATH, index=False)
-    print("\nAdded new song and updated music.csv")
-    print(df_updated.tail())
-
-    
-    pd.DataFrame([new_song]).to_sql("music", conn, if_exists="append", index=False)
-    print(" Appended new song to SQLite table 'music'")
-
-conn.close()
-print(f"\n SQLite DB saved at: {DB_PATH}")
+# ENTRY POINT
+if __name__ == "__main__":
+    main()
