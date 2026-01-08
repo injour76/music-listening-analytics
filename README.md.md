@@ -2,6 +2,7 @@
 
 ## Overview
 This project analyzes a personal music listening log to understand how listening time varies by **activity context** (workout, studying, relaxing, etc.) and **genre**. The workflow mirrors CRM-style engagement analysis: segment users (activities), compute metrics, and generate reporting outputs.
+Most listening time occurred during workouts; rock was the top genre by minutes
 
 ## Dataset
 Input file: `music.csv`  
@@ -23,7 +24,7 @@ Columns:
    - Printed `head()` and `info()` to validate schema and types
 
 3. **Engagement Metrics**
-   - Total listening minutes: **39**
+   - Computed total listening minutes and activity-level aggregates
    - Aggregated minutes by activity (top activity: **workout = 12 minutes**)
    - Filtered workout rows and sorted by minutes to identify top workout tracks
 
@@ -44,4 +45,12 @@ Columns:
 
 # Next Steps
 - Add incremental daily logging (append new entries)
+- 
+## How to Run
+```bash
+pip install pandas matplotlib openpyxl
+python analysis.py
+
+
+
 
